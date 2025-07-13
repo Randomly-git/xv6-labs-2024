@@ -57,6 +57,7 @@ kfree(void *pa)
 
 #ifndef LAB_SYSCALL
   // Fill with junk to catch dangling refs.
+  memset(pa, 1, PGSIZE);
 #endif
   
   r = (struct run*)pa;
@@ -85,6 +86,7 @@ kalloc(void)
   release(&kmem.lock);
 #ifndef LAB_SYSCALL
   if(r)
+    memset((char*)r, 0, PGSIZE); // fill with junk
 #endif
   return (void*)r;
 }

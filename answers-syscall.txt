@@ -1,0 +1,17 @@
+1. Which function called syscall?
+Answer: usertrap().
+
+2.What is the value of p->trapframe->a7 and what does that value represent?
+Answer: 0x7, representing the syscall number of 'SYS_exec'.
+
+3.What was the previous mode that the CPU was in?
+Answer: user mode.
+
+4.Which assembly instruction caused the kernel to panic? Which register corresponds to the variable num?
+Answer: the panicking instruction is lw a5, 0(a5) and the num variable corresponds to register a5, which was set to 0.
+
+5. Why does the kernel crash?
+Answer: The kernel crashes because it attempted to access unmapped memory at address 0x0.
+
+6.What is the name of the process that was running when the kernel panicked? What is its pid?
+Answer: The process name was initcode with pid=1. 
