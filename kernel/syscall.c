@@ -29,7 +29,7 @@ static char* syscall_names[] = {
     [SYS_link]    "link",
     [SYS_mkdir]   "mkdir",
     [SYS_close]   "close",
-    [SYS_trace]   "trace",  // 确保是字符串
+    [SYS_trace]   "trace",  
 };
 
 // Fetch the uint64 at addr from the current process.
@@ -168,8 +168,7 @@ syscall(void)
     p->trapframe->a0 = syscalls[num]();
     // Add: check needs to trace
     if (p->trace_mask & (1 << num)) {
-      int retval = p->trapframe->a0; // syscall return value
-      printf("%d: syscall %s -> %d\n", p->pid, syscall_names[num], retval);
+      printf("%d: syscall %s -> %ld\n", p->pid, syscall_names[num], p->trapframe->a0);
     }
   } else {
     printf("%d %s: unknown sys call %d\n",

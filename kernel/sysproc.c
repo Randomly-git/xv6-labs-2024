@@ -31,7 +31,9 @@ uint64
 sys_trace(void) {
     int mask;
     argint(0, &mask);  
-    myproc()->trace_mask = mask;
+    struct proc* p=myproc();
+    p->trace_mask = mask;
+    p->strace = 0;
     return 0;
 }
 

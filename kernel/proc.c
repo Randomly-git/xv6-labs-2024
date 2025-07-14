@@ -145,6 +145,8 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  p->trace_mask = 0;
+  p->strace = 0;
 
   return p;
 }
