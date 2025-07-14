@@ -488,12 +488,40 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
 
 #ifdef LAB_PGTBL
-void
-vmprint(pagetable_t pagetable) {
-  // your code here
+void vmprint(pagetable_t pagetable) 
+{
+    pagetable_t pgtbl0 = pagetable;
+    pagetable_t pgtbl1, pgtbl2, pg;
+    printf("page table %p\n", pgtbl0);
+    
+    for (int i = 0; i < 512; ++i) {
+        uint64 ilong = ((i<<30)>>16)<<16;
+        pte_t pte0 = pgtbl0[i];
+        if (pte0 & PTE_V) {
+            pgtbl1 = (pagetable_t)PTE2PA(pte0);
+            printf("..%p: pte %p pa %p\n", (void*)ilong, (void*)pte0, pgtbl1);
+            
+            for (int j = 0; j < 512; ++j) {
+                pte_t pte1 = pgtbl1[j];
+                if (pte1 & PTE_V) {
+                    pgtbl2 = (pagetable_t)PTE2PA(pte1);
+                    printf(".. ..%p: pte %p pa %p\n", (void*)(ilong | j<<21), (void*)pte1, pgtbl2);
+                    
+                    for (int k = 0; k < 512; ++k) {
+                        pte_t pte2 = pgtbl2[k];
+                        if (pte2 & PTE_V) {
+                            uint64 va = ilong | (j << 21) | (k << 12);
+                            pg = (pagetable_t)PTE2PA(pte2);
+                            printf(".. .. ..%p: pte %p pa %p\n", 
+                                  (void*)va, (void*)pte2, pg);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 #endif
-
 
 
 #ifdef LAB_PGTBL

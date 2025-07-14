@@ -1,0 +1,47 @@
+va 0x0: User code(0x5B=readable/executable)
+
+va 0x1000: User code/data(0x1B=readable)
+
+va 0x2000: User data(0x17=writable)
+
+va 0x3000: User data(0x07=basic)
+
+va 0x4000: Special data(0xD7=RWX)
+
+va 0x5000: Unmapped(0x0)
+
+va 0x6000: Unmapped(0x0)
+
+va 0x7000: Unmapped(0x0)
+
+va 0x8000: Unmapped(0x0)
+
+va 0x9000: Unmapped(0x0)
+
+va 0xFFFF6000: Unmapped(0x0)
+
+va 0xFFFF7000: Unmapped(0x0)
+
+va 0xFFFF8000: Unmapped(0x0)
+
+va 0xFFFF9000: Unmapped(0x0)
+
+va 0xFFFFA000: Unmapped(0x0)
+
+va 0xFFFFB000: Unmapped(0x0)
+
+va 0xFFFFC000: Unmapped(0x0)
+
+va 0xFFFFD000: Unmapped(0x0)
+
+va 0xFFFFE000: User stack(0xC7=read/write)
+
+va 0xFFFFF000: Trampoline(0x4B=kernel exec)
+
+Q:Which other xv6 system call(s) could be made faster using this shared page? Explain how.
+Answer:
+One system call is pipe(), which is used for inter-process communication. 
+In the traditional implementation, data written to the pipe by one process is copied into the kernel buffer and then read out by another process.
+With shared memory, both processes could map a shared page and use it as a circular buffer, eliminating the need to copy data.
+Another example is read() when used between parent and child processes that share memory. 
+Instead of copying large chunks of data via read(), processe could access the same data directly through the shared memory.
