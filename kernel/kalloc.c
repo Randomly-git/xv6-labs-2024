@@ -11,6 +11,7 @@
 
 void freerange(void *pa_start, void *pa_end);
 
+
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
@@ -21,13 +22,22 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem;
+} kmem,supermem;
 
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  freerange(end, (void*)SUPERBASE);
+  superinit();
+}
+
+void superinit(){
+  initlock(&supermem.lock, "supermem");
+  char *p;
+  p = (char*)SUPERPGROUNDUP((uint64)SUPERBASE);
+  for(; p + SUPERPGSIZE <= (char*)PHYSTOP; p += SUPERPGSIZE)
+    superfree(p);
 }
 
 void
@@ -62,6 +72,19 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
+void superfree(void *pa) {
+  struct run *r;
+  if(((uint64)pa % SUPERPGSIZE) != 0 || (uint64)pa < SUPERBASE || (uint64)pa >= PHYSTOP)
+    panic("superfree");
+  memset(pa, 1, SUPERPGSIZE);
+  
+  r = (struct run*)pa;
+  acquire(&supermem.lock);
+  r->next = supermem.freelist;
+  supermem.freelist = r;
+  release(&supermem.lock);
+}
+
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -80,3 +103,19 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+void* superalloc(void) {
+  struct run *r;
+  // 获取锁
+  acquire(&supermem.lock);
+  r = supermem.freelist;
+  if(r)
+    // 更新空闲页链表
+    supermem.freelist = r->next;
+  release(&supermem.lock);
+
+  if(r) 
+      memset((char*)r, 5, SUPERPGSIZE); // fill with junk
+  return (void*)r; 
+}
+
