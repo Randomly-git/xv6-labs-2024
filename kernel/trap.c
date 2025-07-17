@@ -42,78 +42,46 @@ usertrap(void)
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
-  // 设置中断处理函数为 kernelvec
+  // send interrupts and exceptions to kerneltrap(),
+  // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
-  p->trapframe->epc = r_sepc(); // 保存 EPC
-
-  uint64 scause = r_scause();
-
-  if(scause == 8){
+  
+  // save user program counter.
+  p->trapframe->epc = r_sepc();
+  
+  if(r_scause() == 8){
     // system call
-    if(killed(p)) exit(-1);
+
+    if(killed(p))
+      exit(-1);
+
+    // sepc points to the ecall instruction,
+    // but we want to return to the next instruction.
     p->trapframe->epc += 4;
+
+    // an interrupt will change sepc, scause, and sstatus,
+    // so enable only now that we're done with those registers.
     intr_on();
+
     syscall();
-
-  } else if(scause == 13 || scause == 15){
-    // load or store page fault
-    uint64 va = r_stval();  // fault 虚拟地址
-
-    if(va >= MAXVA){
-      printf("usertrap: invalid va %ld\n", va);
-      setkilled(p);
-    } else {
-      // 支持超级页分配
-      char *mem;
-      int r;
-
-      if ((va % SUPERPGSIZE) == 0) {
-        // 2MB 对齐 -> 分配超级页
-        mem = superalloc();
-        if(mem == 0){
-          setkilled(p);
-          goto done;
-        }
-        memset(mem, 0, SUPERPGSIZE);
-        r = mappages(p->pagetable, va, SUPERPGSIZE, (uint64)mem,
-                                  PTE_W|PTE_R|PTE_X|PTE_U);
-        if(r != 0){
-          superfree(mem);
-          setkilled(p);
-        }
-      } else {
-        // 默认：分配 4KB
-        mem = kalloc();
-        if(mem == 0){
-          setkilled(p);
-          goto done;
-        }
-        memset(mem, 0, PGSIZE);
-        r = mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem,
-                     PTE_W|PTE_R|PTE_X|PTE_U);
-        if(r != 0){
-          kfree(mem);
-          setkilled(p);
-        }
-      }
-    }
-
   } else if((which_dev = devintr()) != 0){
-    // 中断：OK
-
+    // ok
   } else {
-    // 未知异常
-    printf("usertrap(): unexpected scause 0x%lx pid=%d\n", scause, p->pid);
+    printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
     setkilled(p);
   }
 
-done:
-  if(killed(p)) exit(-1);
-  if(which_dev == 2) yield(); // 时钟中断抢占
-  usertrapret(); // 返回用户态
+  if(killed(p))
+    exit(-1);
+
+  // give up the CPU if this is a timer interrupt.
+  if(which_dev == 2)
+    yield();
+
+  usertrapret();
 }
 
 
