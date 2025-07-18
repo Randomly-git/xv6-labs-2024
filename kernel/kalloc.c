@@ -8,6 +8,7 @@
 #include "spinlock.h"
 #include "riscv.h"
 #include "defs.h"
+#define MAXPAGES 32768
 
 void freerange(void *pa_start, void *pa_end);
 
@@ -21,6 +22,7 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
+  int refcount[MAXPAGES];
 } kmem;
 
 void
@@ -30,14 +32,59 @@ kinit()
   freerange(end, (void*)PHYSTOP);
 }
 
+// Convert a physical address to a page index.
+static int
+pa2index(uint64 pa)
+{
+  if (pa < (uint64)end)
+    return -1;
+  uint64 idx = (pa - (uint64)end) / PGSIZE;
+  if (idx >= MAXPAGES)
+    return -1;
+  return idx;
+}
+
 void
 freerange(void *pa_start, void *pa_end)
 {
   char *p;
+  int count = 0;
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  {
+    count++;
+    kmem.refcount[pa2index((uint64)p)] = 1;
     kfree(p);
+  }
+  printf("freerange: initialized %d pages\n", count);
 }
+
+//get refount
+int get_ref(void *pa)
+{
+  int idx = pa2index((uint64)pa);
+  int count;
+  if (idx < 0)
+    return -1;
+
+  acquire(&kmem.lock);
+  count=kmem.refcount[idx];
+  release(&kmem.lock);
+  return count;
+}
+
+// increase refcount
+void
+inc_ref(void *pa){
+  int idx = pa2index((uint64)pa);
+  if (idx < 0)
+    return;
+
+  acquire(&kmem.lock);
+  kmem.refcount[idx]++;
+  release(&kmem.lock);
+}
+
 
 // Free the page of physical memory pointed at by pa,
 // which normally should have been returned by a
@@ -50,15 +97,26 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+  
+  // invalid refcount, panic
+  int idx = pa2index((uint64)pa);
+  if (idx < 0 || kmem.refcount[idx] <= 0){
+    printf("end is %lx,pa is %lx,idx is %d,ref count is %d\n", (uint64)end,(uint64)pa, idx, kmem.refcount[idx]);
+    panic("kfree: invalid pa or refcount");
+  }
+  // decrease refcount
+  acquire(&kmem.lock);
+  int count = --kmem.refcount[idx];
 
   // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  if(count==0)
+  {
+    memset(pa, 1, PGSIZE);
+    r = (struct run *)pa;
+    r->next = kmem.freelist;
+    kmem.freelist = r; 
+  }
 
-  r = (struct run*)pa;
-
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
   release(&kmem.lock);
 }
 
@@ -72,8 +130,11 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
     kmem.freelist = r->next;
+    kmem.refcount[pa2index((uint64)r)] = 1;
+  }
+    
   release(&kmem.lock);
 
   if(r)
