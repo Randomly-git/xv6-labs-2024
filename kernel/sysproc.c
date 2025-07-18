@@ -92,3 +92,42 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64 sys_sigalarm(void)
+{
+  int ticks;
+  uint64 handler;
+
+  struct proc *p = myproc();
+  argint(0, &ticks);
+  argaddr(1, &handler);
+  if (ticks < 0)
+  {
+    return -1;
+  }
+  if (ticks == 0)
+  {
+    // Uninstall the handler
+    p->alarm_interval = 0;
+    p->alarm_handler = 0;
+    p->alarm_ticks = 0;
+  }
+  else
+  {
+    p->alarm_interval = ticks;
+    p->alarm_handler = (void (*)(void))handler;
+    p->alarm_ticks = ticks;
+  }
+  return 0;
+}
+
+uint64 sys_sigreturn(void)
+{
+  struct proc *p = myproc();
+  if (!p->in_handler)
+    return -1;
+  memmove(p->trapframe, &p->sig_trapframe, sizeof(struct trapframe));
+  p->in_handler = 0;
+  //printf("\nvalue of ptrapframe a0 is %lx,    psigtrapframe a0 is %lx\n", p->trapframe->a0, p->sig_trapframe.a0);
+  return p->trapframe->a0;
+}

@@ -80,6 +80,22 @@ usertrap(void)
   if(which_dev == 2)
     yield();
 
+  if (which_dev == 2){
+    struct proc *p = myproc();
+    if (p->alarm_interval > 0){
+      p->alarm_ticks--;
+      if (p->alarm_ticks == 0 && p->in_handler == 0){ 
+        //先保存旧的trapframe再设置新的epc!   
+        memmove(&p->sig_trapframe, p->trapframe, sizeof(struct trapframe));
+        p->in_handler = 1;
+        p->alarm_ticks = p->alarm_interval;
+        p->trapframe->epc = (uint64)p->alarm_handler;
+        //printf("\nvalue of ptrapframe a0 is %lx,psigtrapframe a0 is %lx\n",p->trapframe->a0,p->sig_trapframe.a0);
+      }
+    }
+    yield();
+  }
+
   usertrapret();
 }
 
