@@ -76,50 +76,55 @@ kfree(void *pa)
 void *
 kalloc(void)
 {
-  struct run *r;
-  struct run *tail;
+  struct run *r, *stolen_head, *stolen_tail;
   push_off();
-  int cpu_id=cpuid();
-  pop_off();
+  int cpu_id = cpuid();
+  
+  // 尝试本地分配
   acquire(&kmem[cpu_id].lock);
-  r = kmem[cpu_id].freelist;
-  if(r){
+  if((r = kmem[cpu_id].freelist)) {
     kmem[cpu_id].freelist = r->next;
     release(&kmem[cpu_id].lock);
-    }
-  else{
-    release(&kmem[cpu_id].lock);
-    int i=(cpu_id+1)%NCPU;
-    for(;i!=cpu_id;i=(i+1)%NCPU){
-      //steal 2 or 3 everytime
-      acquire(&kmem[i].lock);
-      if (kmem[i].freelist)
-      {
-        // Steal multiple pages in one go
-        r = kmem[i].freelist;
-        tail = r;
-        // count = 1;
-
-        for(int count=1;count < BATCH_SIZE && tail->next;count++){
-          tail = tail->next;
-        }
-        // Detach stolen pages from source CPU
-        kmem[i].freelist = tail->next;
-        release(&kmem[i].lock);
-        tail->next = 0;
-
-        // Add to local freelist
-        acquire(&kmem[cpu_id].lock);
-         // First page to return
-        kmem[cpu_id].freelist = r->next;
-        release(&kmem[cpu_id].lock);
-        break;
-      }
-      release(&kmem[i].lock);
-    }
+    pop_off();
+    if(r) memset((char*)r, 5, PGSIZE);
+    return (void*)r;
   }
+  release(&kmem[cpu_id].lock);
 
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
-  return (void*)r;
+  // 从其他CPU盗取
+  for(int i = 0; i < NCPU; i++) {
+    if(i == cpu_id) continue;
+    
+    acquire(&kmem[i].lock);
+    if(kmem[i].freelist) {
+      // 盗取一批页面
+      stolen_head = kmem[i].freelist;
+      stolen_tail = stolen_head;
+      
+      // 找到这批页面的末尾
+      for(int count = 1; count < BATCH_SIZE && stolen_tail->next; count++) {
+        stolen_tail = stolen_tail->next;
+      }
+      
+      // 从源CPU分离
+      kmem[i].freelist = stolen_tail->next;
+      stolen_tail->next = 0;
+      release(&kmem[i].lock);
+      
+      // 将盗取的页面加入本地列表
+      acquire(&kmem[cpu_id].lock);
+      stolen_tail->next = kmem[cpu_id].freelist;
+      kmem[cpu_id].freelist = stolen_head->next; 
+      r = stolen_head; 
+      release(&kmem[cpu_id].lock);
+      
+      pop_off();
+      if(r) memset((char*)r, 5, PGSIZE);
+      return (void*)r;
+    }
+    release(&kmem[i].lock);
+  }
+  
+  pop_off();
+  return 0;
 }
