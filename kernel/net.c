@@ -118,6 +118,45 @@ sys_bind(void)
 uint64
 sys_unbind(void)
 {
+  int port;
+  argint(0, &port); // 获取要解绑的端口号
+
+  acquire(&udp_table.lock);
+  
+  // 查找端口是否已绑定
+  struct bound_port *bp = find_bound_port(port);
+  if (bp == 0) {
+    release(&udp_table.lock);
+    return -1; // 端口未绑定
+  }
+
+  // 获取端口锁（注意锁的顺序：先udp_table，再bp）
+  acquire(&bp->lock);
+
+  // 释放所有待处理的数据包
+  struct pending_packet *pp = bp->head;
+  while (pp) {
+    struct pending_packet *next = pp->next;
+    if (pp->data) 
+      kfree(pp->data); // 释放数据包内存
+    kfree(pp);         // 释放pending_packet结构体
+    pp = next;
+  }
+
+  // 从udp_table中移除该端口（用最后一个元素覆盖当前元素）
+  for (int i = 0; i < udp_table.port_count; i++) {
+    if (&udp_table.ports[i] == bp) {
+      if (i != udp_table.port_count - 1) {
+        memmove(&udp_table.ports[i], &udp_table.ports[udp_table.port_count - 1],
+                sizeof(struct bound_port));
+      }
+      udp_table.port_count--;
+      break;
+    }
+  }
+
+  release(&bp->lock);
+  release(&udp_table.lock);
   return 0;
 }
 
